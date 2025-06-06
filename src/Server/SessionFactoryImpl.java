@@ -16,7 +16,6 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
         this.fileSystem = (FileSystemInterface) new FileSystemImpl(username);
     }
 
-
     @Override
     public List<String> listFiles() throws RemoteException {
         return fileSystem.listFiles();
@@ -59,5 +58,9 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     @Override
     public void shareWithUser(String filename, String withUsername) throws RemoteException {
         fileSystem.share(filename, withUsername);
+    }
+    @Override
+    public String getPath() throws RemoteException{
+        return fileSystem.getPath();
     }
 }

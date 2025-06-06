@@ -22,5 +22,5 @@ public interface SessionFactory extends Remote {
 
     void shareWithUser(String filename, String withUsername) throws RemoteException;
 
-
+    String getPath() throws RemoteException;
 }

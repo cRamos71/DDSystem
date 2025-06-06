@@ -22,13 +22,13 @@ public class SessionMenu {
         System.out.println("\nWelcome, " + username + ". Type `help` to see available commands.");
 
         while (true) {
-            /*try {
-                String currentPath = fileSystem.getCurrentDirectory(username);
+            try {
+                String currentPath = session.getPath();
                 System.out.print(username + ":" + currentPath + "$ ");
             } catch (RemoteException e) {
                 System.err.println("Error fetching current directory.");
                 break;
-            }*/
+            }
 
             String input = scanner.nextLine().trim();
             if (input.isEmpty()) continue;
@@ -46,7 +46,7 @@ public class SessionMenu {
                     if (parts.length < 2) System.out.println("Usage: create <folder>");
                     else createFolder(parts[1]);
                 }
-                /*case "rename" -> {
+                case "rename" -> {
                     if (parts.length < 3) System.out.println("Usage: rename <old_name> <new_name>");
                     else rename(parts[1], parts[2]);
                 }
@@ -69,7 +69,7 @@ public class SessionMenu {
                 case "share" -> {
                     if (parts.length < 3) System.out.println("Usage: share <filename> <target_user>");
                     else shareFile(parts[1], parts[2]);
-                }*/
+                }
                 case "help" -> printHelp();
                 case "exit" -> {
                     System.out.println("Logging out...");
@@ -109,32 +109,31 @@ public class SessionMenu {
         }
     }
 
-    /*private void rename(String oldName, String newName) {
+    private void rename(String oldName, String newName) {
         try {
-            fileSystem.rename(username, oldName, newName);
+            session.rename(oldName, newName);
         } catch (RemoteException ignored) {
         }
     }
     private void move(String itemName, String targetFolder) {
         try {
-            boolean success = fileSystem.move(username, itemName, targetFolder);
-            System.out.println(success ? "Moved successfully." : "Move failed.");
+            boolean success = session.move(itemName, targetFolder);
         } catch (RemoteException e) {
             System.err.println("Failed to move item: " + e.getMessage());
         }
     }
     private void uploadFile(String localPath) {
         try {
-            byte[] content = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(localPath));
+            byte[] data = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(localPath));
             String filename = java.nio.file.Paths.get(localPath).getFileName().toString();
-            fileSystem.uploadFile(username, filename, content);
+            session.upload(filename, data);
         } catch (Exception ignored) {
         }
     }
 
     private void downloadFile(String filename) {
         try {
-            byte[] content = fileSystem.downloadFile(username, filename);
+            byte[] content = session.download(filename);
             System.out.println("Downloaded content (preview):\n" +
                     new String(content, 0, Math.min(content.length, 200)));
             // You may save it if needed, but the requirement is to keep client stateless
@@ -145,17 +144,17 @@ public class SessionMenu {
 
     private void deleteFile(String filename) {
         try {
-            fileSystem.deleteFile(username, filename);
+            session.delete(filename);
         } catch (RemoteException ignored) {
         }
     }
 
     private void shareFile(String filename, String targetUser) {
         try {
-            fileSystem.shareWithUser(username, filename, targetUser);
+            session.shareWithUser(filename, targetUser);
         } catch (RemoteException ignored) {
         }
-    }*/
+    }
 
 
     private void printHelp() {
