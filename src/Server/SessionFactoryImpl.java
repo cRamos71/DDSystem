@@ -2,6 +2,7 @@ package Server;
 
 import Interface.FileSystemInterface;
 import Interface.SessionFactory;
+import Interface.SubjectRI;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -11,9 +12,22 @@ import java.util.List;
 public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFactory {
     private final FileSystemInterface fileSystem;
 
+    private SubjectRI subjectRI;
+
     public SessionFactoryImpl(String username) throws RemoteException {
         super();
         this.fileSystem = (FileSystemInterface) new FileSystemImpl(username);
+        this.subjectRI = null;
+    }
+
+    @Override
+    public void setSubjectRI(SubjectRI subjectRI) throws RemoteException{
+        this.subjectRI = subjectRI;
+    }
+
+    @Override
+    public SubjectRI getSubjectRI() throws RemoteException{
+        return this.subjectRI;
     }
 
     @Override
@@ -21,9 +35,14 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
         return fileSystem.listFiles();
     }
     @Override
-    public boolean createFolder(String folderName) throws RemoteException{
-        return fileSystem.createFolder(folderName);
-    }
+    public void createFolder(String folderName) throws RemoteException{
+        try {
+            subjectRI.setState(new State(
+                    "CREATE",
+                    fileSystem.createFolder(folderName) ? "'" + folderName + "' created successfully.\n"
+                            : "Failed to create folder '" + folderName + "'.\n"
+            ));
+        } catch(RemoteException e) { e.printStackTrace(); }    }
 
     @Override
     public boolean changeDirectory(String folderName) throws RemoteException{
@@ -31,18 +50,36 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     }
 
     @Override
-    public boolean rename(String oldName, String newName) throws RemoteException {
-        return fileSystem.rename(oldName, newName);
+    public void rename(String oldName, String newName) throws RemoteException {
+        try {
+            subjectRI.setState(new State(
+                    "RENAME",
+                    fileSystem.rename(oldName, newName) ? "'" + oldName + "' renamed successfully to '" + newName  + "'.\n"
+                            : "Failed to rename '" + oldName + "' to '" + newName + "'.\n"
+            ));
+        } catch(RemoteException e) { e.printStackTrace(); }
     }
 
     @Override
-    public boolean move(String itemName, String targetFolder) throws RemoteException {
-        return fileSystem.move(itemName, targetFolder);
+    public void move(String itemName, String targetFolder) throws RemoteException {
+        try {
+            subjectRI.setState(new State(
+                    "MOVE",
+                    fileSystem.move(itemName, targetFolder) ? "'" + itemName + "' successfully moved to '" + targetFolder + "'.\n"
+                            : "Failed to move '" + itemName + "' to '" + targetFolder + "'.\n"
+            ));
+        } catch(RemoteException e) { e.printStackTrace(); }
     }
 
     @Override
-    public boolean upload(String filename, byte[] data) throws RemoteException {
-        return fileSystem.upload(filename, data);
+    public void upload(String filename, byte[] data) throws RemoteException {
+        try {
+            subjectRI.setState(new State(
+                    "UPLOAD",
+                    fileSystem.upload(filename, data) ? "'" + filename + "' upload successful.\n"
+                            : "Failed to upload '" + filename + "'."
+            ));
+        } catch(RemoteException e) { e.printStackTrace(); }
     }
 
     @Override
@@ -52,12 +89,24 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
 
     @Override
     public void delete(String filename) throws RemoteException {
-        fileSystem.delete(filename);
+        try {
+            subjectRI.setState(new State(
+                    "DELETE",
+                    fileSystem.delete(filename) ? "'" + filename + "' delete successful.\n"
+                            : "Failed to delete '" + filename + "'.\n"
+            ));
+        } catch(RemoteException e) { e.printStackTrace(); }
     }
 
     @Override
     public void shareWithUser(String filename, String withUsername) throws RemoteException {
-        fileSystem.share(filename, withUsername);
+        try {
+            subjectRI.setState(new State(
+                    "SHARE",
+                    fileSystem.share(filename, withUsername) ? "'" + filename + "' shared with '" + withUsername + "'.\n"
+                            : "Failed to share '" + filename + "' with '" + withUsername + "'.\n"
+            ));
+        } catch(RemoteException e) { e.printStackTrace(); }
     }
     @Override
     public String getPath() throws RemoteException{

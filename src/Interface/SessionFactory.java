@@ -6,6 +6,8 @@ import java.util.List;
 
 public interface SessionFactory extends Remote {
 
+    void setSubjectRI(SubjectRI subjectRI) throws RemoteException;
+    SubjectRI getSubjectRI() throws RemoteException;
     List<String> listFiles() throws RemoteException;
     boolean createFolder(String folderName) throws RemoteException;
     boolean changeDirectory(String folderName) throws RemoteException;
@@ -14,7 +16,7 @@ public interface SessionFactory extends Remote {
 
     boolean move(String itemName, String targetFolder) throws RemoteException;
 
-    boolean upload(String filename, byte[] data) throws RemoteException;
+    void upload(String filename, byte[] data) throws RemoteException;
 
     byte[] download(String filename) throws RemoteException;
 

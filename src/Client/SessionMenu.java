@@ -10,9 +10,11 @@ public class SessionMenu {
 
     private final String username;
     private final SessionFactory session;
-    public SessionMenu(String username, SessionFactory session) {
+    private final ObserverImpl observer;
+    public SessionMenu(String username, SessionFactory session, ObserverImpl observer) {
         this.username = username;
         this.session = session;
+        this.observer = observer;
         run();
     }
 
@@ -117,7 +119,7 @@ public class SessionMenu {
     }
     private void move(String itemName, String targetFolder) {
         try {
-            boolean success = session.move(itemName, targetFolder);
+            session.move(itemName, targetFolder);
         } catch (RemoteException e) {
             System.err.println("Failed to move item: " + e.getMessage());
         }

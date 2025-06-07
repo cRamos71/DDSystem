@@ -2,6 +2,7 @@ package Client;
 
 import Interface.AuthFactory;
 import Interface.SessionFactory;
+import Interface.SubjectRI;
 
 import java.rmi.Remote;
 import java.util.Scanner;
@@ -64,7 +65,9 @@ public class ClientMenu {
             SessionFactory session = authService.login(username, password);
             if (session != null) {
                 System.out.println("Login successful!");
-                SessionMenu menu = new SessionMenu(username, session);
+                SubjectRI subjectRI = session.getSubjectRI();
+                ObserverImpl observer = new ObserverImpl(username, subjectRI);
+                SessionMenu menu = new SessionMenu(username, session, observer);
             } else {
                 System.out.println("Invalid credentials.");
             }
