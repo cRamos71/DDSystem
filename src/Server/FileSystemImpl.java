@@ -339,7 +339,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
 
     @Override
-    public boolean move(String itemName, String targetFolder) throws RemoteException {
+    public synchronized boolean move(String itemName, String targetFolder) throws RemoteException {
         // Só move se estivermos dentro de serverLocalDir
         if (!isInsideServerLocal(currentDir)) {
             return false;
@@ -372,7 +372,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
     }
 
     @Override
-    public boolean upload(String filename, byte[] data) throws RemoteException {
+    public synchronized boolean upload(String filename, byte[] data) throws RemoteException {
 
         if (isInsideServerLocal(currentDir)) {
             Path dst = currentDir.resolve(filename).normalize();
@@ -413,7 +413,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
 
     @Override
-    public byte[] download(String filename) throws RemoteException {
+    public synchronized byte[] download(String filename) throws RemoteException {
         // Só baixa se estivermos em serverLocalDir
         if (!isInsideServerLocal(currentDir)) {
             return null;
@@ -431,7 +431,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
     }
 
     @Override
-    public boolean delete(String name) throws RemoteException {
+    public synchronized boolean delete(String name) throws RemoteException {
         if (isInsideServerLocal(currentDir)) {
             Path target = currentDir.resolve(name).normalize();
             if (!Files.exists(target) || !target.startsWith(serverLocalDir)) {
@@ -468,7 +468,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
     }
 
     @Override
-    public boolean share(String name, String withUsername) throws RemoteException {
+    public synchronized boolean share(String name, String withUsername) throws RemoteException {
         // 1) Só permite compartilhar se estivermos dentro de serverLocalDir
         if (!isInsideServerLocal(currentDir)) {
             return false;

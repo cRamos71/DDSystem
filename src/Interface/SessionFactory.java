@@ -9,12 +9,12 @@ public interface SessionFactory extends Remote {
     void setSubjectRI(SubjectRI subjectRI) throws RemoteException;
     SubjectRI getSubjectRI() throws RemoteException;
     List<String> listFiles() throws RemoteException;
-    boolean createFolder(String folderName) throws RemoteException;
+    void createFolder(String folderName) throws RemoteException;
     boolean changeDirectory(String folderName) throws RemoteException;
 
-    boolean rename(String oldName, String newName) throws RemoteException;
+    void rename(String oldName, String newName) throws RemoteException;
 
-    boolean move(String itemName, String targetFolder) throws RemoteException;
+    void move(String itemName, String targetFolder) throws RemoteException;
 
     void upload(String filename, byte[] data) throws RemoteException;
 
