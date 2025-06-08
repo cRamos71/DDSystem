@@ -53,11 +53,27 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     @Override
     public void rename(String oldName, String newName) throws RemoteException {
         try {
+            List<String> users = fileSystem.getAuthorizedUsers(oldName);
+            boolean ok = fileSystem.rename(oldName, newName);
             subjectRI.setState(new State(
                     "RENAME",
-                    fileSystem.rename(oldName, newName) ? "'" + oldName + "' renamed successfully to '" + newName  + "'.\n"
+                    ok ? "'" + oldName + "' renamed successfully to '" + newName  + "'.\n"
                             : "Failed to rename '" + oldName + "' to '" + newName + "'.\n"
             ));
+
+            if(!ok) return;
+
+            for (String user : users) {
+                SubjectRI subj = SubjectRegistry.get(user);
+                if(subjectRI.equals(subj)) continue;
+                if (subj != null) {
+                    subj.setState((new State(
+                            "RENAME",
+                            "'" + oldName + "' was renamed to '" + newName + "' by '" + username + "'.\n"
+                    )));
+                }
+            }
+
         } catch(RemoteException e) { e.printStackTrace(); }
     }
 

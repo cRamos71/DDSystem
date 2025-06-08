@@ -60,6 +60,15 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
         this.currentDir = userStorageDir;
     }
 
+    private static class OwnerInfo {
+        final String owner;
+        final Path   relative;
+        OwnerInfo(String owner, Path relative) {
+            this.owner    = owner;
+            this.relative = relative;
+        }
+    }
+
     // ================= Helpers =================
 
     private boolean isInsideServerLocal(Path p) {
@@ -69,7 +78,24 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
     private boolean isInsideStorageShared(Path p) {
         return p.normalize().startsWith(storageSharedDir.normalize());
     }
-
+    private OwnerInfo resolveOwnerAndRelative(Path fullPath) throws RemoteException {
+        Path serverLocalInvoker = SERVERSTORAGE_ROOT.resolve(username).resolve("local");
+        if (fullPath.startsWith(serverLocalInvoker)) {
+            return new OwnerInfo(
+                    username,
+                    serverLocalInvoker.relativize(fullPath)
+            );
+        } else {
+            Path sharedBase = STORAGE_ROOT.resolve(username).resolve("shared");
+            if (!fullPath.startsWith(sharedBase)) {
+                throw new RemoteException("Path inválido: " + fullPath);
+            }
+            Path relToShared = sharedBase.relativize(fullPath);
+            String owner     = relToShared.getName(0).toString();
+            Path relative    = relToShared.subpath(1, relToShared.getNameCount());
+            return new OwnerInfo(owner, relative);
+        }
+    }
     private void deleteRecursively(Path target) throws IOException {
         if (!Files.exists(target)) return;
         Files.walkFileTree(target, new SimpleFileVisitor<>() {
@@ -315,51 +341,59 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public synchronized boolean rename(String oldName, String newName) throws RemoteException {
+        Path fullOld = currentDir.resolve(oldName).normalize();
+        if (!Files.exists(fullOld)) {
+            return false;
+        }
 
-        if (isInsideServerLocal(currentDir)) {
-            Path source = currentDir.resolve(oldName).normalize();
-            Path target = currentDir.resolve(newName).normalize();
-            if (!Files.exists(source)
-                    || !source.startsWith(serverLocalDir)
-                    || !target.getParent().startsWith(serverLocalDir)) {
-                return false;
+        OwnerInfo info = resolveOwnerAndRelative(fullOld);
+        String owner       = info.owner;
+        Path relativeOld   = info.relative;
+        Path relativeParent= relativeOld.getNameCount()>1
+                ? relativeOld.getParent()
+                : Paths.get("");
+
+        List<String> authorized = getAuthorizedUsers(oldName);
+
+        Path ownerServerOld  = SERVERSTORAGE_ROOT.resolve(owner).resolve("local").resolve(relativeOld);
+        Path ownerServerNew  = SERVERSTORAGE_ROOT.resolve(owner).resolve("local").resolve(relativeParent).resolve(newName);
+        Path ownerMirrorOld  = STORAGE_ROOT       .resolve(owner).resolve("local").resolve(relativeOld);
+        Path ownerMirrorNew  = STORAGE_ROOT       .resolve(owner).resolve("local").resolve(relativeParent).resolve(newName);
+
+        try {
+            // rename in serverStorage
+            Files.createDirectories(ownerServerNew.getParent());
+            Files.move(ownerServerOld, ownerServerNew, StandardCopyOption.REPLACE_EXISTING);
+
+            // rename in storageMirror
+            if (Files.exists(ownerMirrorOld)) {
+                Files.createDirectories(ownerMirrorNew.getParent());
+                Files.move(ownerMirrorOld, ownerMirrorNew, StandardCopyOption.REPLACE_EXISTING);
             }
-            try {
-                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new RemoteException("Error renaming: " + oldName, e);
+        }
 
-                Path relOld    = serverLocalDir.relativize(source);
-                Path relNew    = serverLocalDir.relativize(target);
-                Path mirrorOld = storageLocalDir.resolve(relOld);
-                Path mirrorNew = storageLocalDir.resolve(relNew);
-                if (Files.exists(mirrorOld)) {
-                    Files.createDirectories(mirrorNew.getParent());
-                    Files.move(mirrorOld, mirrorNew, StandardCopyOption.REPLACE_EXISTING);
-                }
-                return true;
-            } catch (IOException e) {
-                throw new RemoteException("Error renaming: " + oldName, e);
+        for (String u : authorized) {
+            if (u.equals(owner)) continue;
+            Path sharedOld = STORAGE_ROOT.resolve(u)
+                    .resolve("shared")
+                    .resolve(owner)
+                    .resolve(relativeOld);
+            Path sharedNew = STORAGE_ROOT.resolve(u)
+                    .resolve("shared")
+                    .resolve(owner)
+                    .resolve(relativeParent)
+                    .resolve(newName);
+            if (Files.exists(sharedOld)) {
+                try {
+                    Files.createDirectories(sharedNew.getParent());
+                    Files.move(sharedOld, sharedNew, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ignored) {}
             }
         }
 
-
-        if (isInsideStorageShared(currentDir)) {
-            Path source = currentDir.resolve(oldName).normalize();
-            Path target = currentDir.resolve(newName).normalize();
-            if (!Files.exists(source)
-                    || !source.startsWith(storageSharedDir)
-                    || !target.getParent().startsWith(storageSharedDir)) {
-                return false;
-            }
-            try {
-                Files.createDirectories(target.getParent());
-                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-                return true;
-            } catch (IOException e) {
-                throw new RemoteException("Error renaming: " + oldName, e);
-            }
-        }
-
-        return false;
+        return true;
     }
 
 
@@ -458,19 +492,9 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                 return false;
             }
 
-            String owner;
-            Path relative;
-            Path serverLocalDirForInvoker = SERVERSTORAGE_ROOT.resolve(username).resolve("local");
-
-            if (fullPath.startsWith(serverLocalDirForInvoker)) {
-                owner    = username;
-                relative = serverLocalDirForInvoker.relativize(fullPath);
-            } else {
-                Path sharedBase = STORAGE_ROOT.resolve(username).resolve("shared");
-                Path relToShared = sharedBase.relativize(fullPath);
-                owner    = relToShared.getName(0).toString();
-                relative = relToShared.subpath(1, relToShared.getNameCount());
-            }
+            OwnerInfo info = resolveOwnerAndRelative(fullPath);
+            String owner   = info.owner;
+            Path relative  = info.relative;
 
             Path ownerServerPath = SERVERSTORAGE_ROOT.resolve(owner)
                     .resolve("local")
