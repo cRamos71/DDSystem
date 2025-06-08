@@ -429,13 +429,11 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public synchronized boolean upload(String filename, byte[] data) throws RemoteException {
-        // 1) Write into the invoker’s area
         Path dst = currentDir.resolve(filename).normalize();
         boolean ok;
         try {
             Files.createDirectories(dst.getParent());
             Files.write(dst, data);
-            // if in owner’s local, also mirror into storage/local
             if (isInsideServerLocal(currentDir)) {
                 Path relative = serverLocalDir.relativize(dst);
                 Path mirror   = storageLocalDir.resolve(relative);
@@ -447,28 +445,22 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
             throw new RemoteException("Error uploading file: " + filename, e);
         }
 
-        // 2) If upload failed, nothing to propagate
         if (!ok) {
             return false;
         }
 
-        // 3) Determine who owns this file and its path relative to owner/local
         OwnerInfo info = resolveOwnerAndRelative(dst);
         String owner   = info.owner;
         Path relative   = info.relative;
 
-        // 4) Capture the list of all users authorized *after* the new file exists
         List<String> authorized = getAuthorizedUsers(filename);
 
-        // 5) Propagate:
         for (String u : authorized) {
-            // skip notifying the invoker themselves
             if (u.equals(username)) {
                 continue;
             }
 
             if (u.equals(owner)) {
-                // collaborator just uploaded into shared → copy into owner’s local
                 Path ownerServer = SERVERSTORAGE_ROOT.resolve(owner)
                         .resolve("local")
                         .resolve(relative);
@@ -481,10 +473,8 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                     Files.createDirectories(ownerMirror.getParent());
                     Files.copy(dst, ownerMirror, StandardCopyOption.REPLACE_EXISTING);
                 } catch (IOException ignored) {
-                    // log if you want
                 }
             } else {
-                // propagate to other collaborators’ shared folders
                 Path sharedCopy = STORAGE_ROOT.resolve(u)
                         .resolve("shared")
                         .resolve(owner)
@@ -493,7 +483,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                     Files.createDirectories(sharedCopy.getParent());
                     Files.copy(dst, sharedCopy, StandardCopyOption.REPLACE_EXISTING);
                 } catch (IOException ignored) {
-                    // log if you want
                 }
             }
         }
@@ -503,20 +492,40 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
 
     @Override
-    public synchronized byte[] download(String filename) throws RemoteException {
-        if (!isInsideServerLocal(currentDir)) {
-            return null;
+    public synchronized boolean download(String filename) throws RemoteException {
+        if (!isInsideStorageShared(currentDir)) {
+            return false;
         }
 
-        Path file = currentDir.resolve(filename).normalize();
-        if (!Files.exists(file) || Files.isDirectory(file)) {
-            return null;
+        Path sharedFile = currentDir.resolve(filename).normalize();
+        if (!Files.exists(sharedFile) || Files.isDirectory(sharedFile)) {
+            return false;
         }
         try {
-            return Files.readAllBytes(file);
+            byte[] data = Files.readAllBytes(sharedFile);
+
+            OwnerInfo info = resolveOwnerAndRelative(sharedFile);
+            String owner   = info.owner;
+            Path relative  = info.relative;
+
+            Path serverPath = SERVERSTORAGE_ROOT.resolve(username)
+                                                .resolve("local")
+                                                .resolve(relative);
+            Path mirrorDst = STORAGE_ROOT.resolve(username)
+                    .resolve("local")
+                    .resolve(relative);
+
+            Files.createDirectories(serverPath.getParent());
+            Files.write(serverPath, data);
+
+            Files.createDirectories(mirrorDst.getParent());
+            Files.write(mirrorDst, data);
+
+
         } catch (IOException e) {
             throw new RemoteException("Error downloading: " + filename, e);
         }
+        return true;
     }
 
         @Override

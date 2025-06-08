@@ -129,15 +129,14 @@ public class SessionMenu {
             byte[] data = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(localPath));
             String filename = java.nio.file.Paths.get(localPath).getFileName().toString();
             session.upload(filename, data);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            System.err.println("Failed to upload file: " + e.getMessage());
         }
     }
 
     private void downloadFile(String filename) {
         try {
-            byte[] content = session.download(filename);
-            System.out.println("Downloaded content (preview):\n" +
-                    new String(content, 0, Math.min(content.length, 200)));
+            session.download(filename);
         } catch (Exception e) {
             System.err.println("Failed to download file: " + e.getMessage());
         }

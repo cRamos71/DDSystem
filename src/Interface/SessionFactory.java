@@ -18,7 +18,7 @@ public interface SessionFactory extends Remote {
 
     void upload(String filename, byte[] data) throws RemoteException;
 
-    byte[] download(String filename) throws RemoteException;
+    void download(String filename) throws RemoteException;
 
     void delete(String filename) throws RemoteException;
 

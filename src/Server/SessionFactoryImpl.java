@@ -100,8 +100,12 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     }
 
     @Override
-    public byte[] download(String filename) throws RemoteException {
-        return fileSystem.download(filename);
+    public void download(String filename) throws RemoteException {
+        try{
+            subjectRI.setState(new State(
+                    "DOWNLOAD", fileSystem.download(filename) ? "'" + filename + "' was downloaded to your local storage.\n"
+                    : "'" + filename + "' download failed.\n"));
+        }catch(RemoteException e) { e.printStackTrace(); }
     }
 
     @Override
@@ -135,11 +139,16 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     @Override
     public void shareWithUser(String filename, String withUsername) throws RemoteException {
         try {
+            boolean ok = fileSystem.share(filename, withUsername);
             subjectRI.setState(new State(
                     "SHARE",
-                    fileSystem.share(filename, withUsername) ? "'" + filename + "' shared with '" + withUsername + "'.\n"
+                    ok ? "'" + filename + "' shared with '" + withUsername + "'.\n"
                             : "Failed to share '" + filename + "' with '" + withUsername + "'.\n"
             ));
+            if(!ok) return;
+
+            SubjectRI subjectRIUser = SubjectRegistry.get(withUsername);
+            subjectRIUser.setState(new State("SHARE", "'" + username + "' shared '" + filename + "' with you.\n"));
         } catch(RemoteException e) { e.printStackTrace(); }
     }
     @Override
