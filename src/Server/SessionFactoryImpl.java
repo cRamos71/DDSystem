@@ -80,22 +80,49 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     @Override
     public void move(String itemName, String targetFolder) throws RemoteException {
         try {
+            List<String> users = fileSystem.getAuthorizedUsers(itemName);
+            boolean ok = fileSystem.move(itemName, targetFolder);
             subjectRI.setState(new State(
                     "MOVE",
-                    fileSystem.move(itemName, targetFolder) ? "'" + itemName + "' successfully moved to '" + targetFolder + "'.\n"
+                     ok ? "'" + itemName + "' successfully moved to '" + targetFolder + "'.\n"
                             : "Failed to move '" + itemName + "' to '" + targetFolder + "'.\n"
             ));
+            if(!ok) return;
+
+            for (String user : users) {
+                SubjectRI subj = SubjectRegistry.get(user);
+                if(subjectRI.equals(subj)) continue;
+                if (subj != null) {
+                    subj.setState((new State(
+                            "MOVE",
+                            "'" + itemName + "' was moved to '" + targetFolder + "' by his owner.\n"
+                    )));
+                }
+            }
         } catch(RemoteException e) { e.printStackTrace(); }
     }
 
     @Override
     public void upload(String filename, byte[] data) throws RemoteException {
         try {
+            boolean ok = fileSystem.upload(filename, data);
             subjectRI.setState(new State(
                     "UPLOAD",
-                    fileSystem.upload(filename, data) ? "'" + filename + "' upload successful.\n"
+                    ok ? "'" + filename + "' upload successful.\n"
                             : "Failed to upload '" + filename + "'."
             ));
+            if(!ok) return;
+            List<String> users = fileSystem.getAuthorizedUsers(filename);
+            for (String user : users) {
+                SubjectRI subj = SubjectRegistry.get(user);
+                if(subjectRI.equals(subj)) continue;
+                if (subj != null) {
+                    subj.setState((new State(
+                            "UPLOAD",
+                            "'" + filename + "' was uploaded by '" + username + "'.\n"
+                    )));
+                }
+            }
         } catch(RemoteException e) { e.printStackTrace(); }
     }
 

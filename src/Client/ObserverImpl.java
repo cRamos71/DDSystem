@@ -25,5 +25,6 @@ public class ObserverImpl extends UnicastRemoteObject implements ObserverRI {
     public void update() throws RemoteException {
         lastObservedState = subjectRI.getState();
         System.out.printf("[NOTIFICATION][%s] %s", lastObservedState.getId(), lastObservedState.getInfo());
+        System.out.flush();
     }
 }

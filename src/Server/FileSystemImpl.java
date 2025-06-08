@@ -403,28 +403,64 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
             return false;
         }
 
-        Path source  = currentDir.resolve(itemName).normalize();
+        Path source = currentDir.resolve(itemName).normalize();
         Path destDir = currentDir.resolve(targetFolder).normalize();
         if (!Files.exists(source) || !Files.isDirectory(destDir) || !isInsideServerLocal(destDir)) {
             return false;
         }
 
-        Path newLocation = destDir.resolve(source.getFileName());
+        List<String> authorized = getAuthorizedUsers(itemName);
+        Path serverLocalInvoker = SERVERSTORAGE_ROOT.resolve(username).resolve("local");
+
+        String owner = username;
+        Path relativeOld = serverLocalInvoker.relativize(source);
+
+        Path newLocation     = destDir.resolve(source.getFileName());
+        Path relativeNew     = serverLocalDir.relativize(newLocation);
+
         try {
+            Files.createDirectories(newLocation.getParent());
             Files.move(source, newLocation, StandardCopyOption.REPLACE_EXISTING);
 
-            Path relOld    = serverLocalDir.relativize(source);
-            Path relNew    = serverLocalDir.relativize(newLocation);
-            Path mirrorOld = storageLocalDir.resolve(relOld);
-            Path mirrorNew = storageLocalDir.resolve(relNew);
+            Path mirrorOld = storageLocalDir.resolve(relativeOld);
+            Path mirrorNew = storageLocalDir.resolve(relativeNew);
             if (Files.exists(mirrorOld)) {
                 Files.createDirectories(mirrorNew.getParent());
                 Files.move(mirrorOld, mirrorNew, StandardCopyOption.REPLACE_EXISTING);
             }
-            return true;
         } catch (IOException e) {
-            throw new RemoteException(String.format("Error moving: %s → %s", source, newLocation), e);
+            throw new RemoteException(
+                    String.format("Error moving %s → %s", source, newLocation), e
+            );
         }
+
+        for (String u : authorized) {
+            if (u.equals(owner)) {
+                continue;
+            }
+
+            Path sharedOld = STORAGE_ROOT
+                    .resolve(u)
+                    .resolve("shared")
+                    .resolve(owner)
+                    .resolve(relativeOld);
+
+            Path sharedNew = STORAGE_ROOT
+                    .resolve(u)
+                    .resolve("shared")
+                    .resolve(owner)
+                    .resolve(relativeNew);
+
+            if (Files.exists(sharedOld)) {
+                try {
+                    Files.createDirectories(sharedNew.getParent());
+                    Files.move(sharedOld, sharedNew, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ignored) {
+                }
+            }
+        }
+
+        return true;
     }
 
     @Override

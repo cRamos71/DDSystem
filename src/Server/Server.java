@@ -12,7 +12,7 @@ public class Server {
             AuthFactory authService = (AuthFactory) new AuthFactoryImpl();
             Naming.rebind("rmi://localhost/AuthService", authService);
 
-            System.out.println("RMI server started and AuthService Registered");
+            System.out.println("[SERVER] RMI server is now running on port 1099\n[SERVER][NOTIFICATION] AuthService Registered");
         }catch (Exception e){
             System.err.println("Error starting RMI server:" + e.getMessage());
             e.printStackTrace();
