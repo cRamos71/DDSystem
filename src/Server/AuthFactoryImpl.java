@@ -28,6 +28,8 @@ public class AuthFactoryImpl extends UnicastRemoteObject implements AuthFactory{
             SubjectRI subjectRI = new SubjectImpl();
             session.setSubjectRI(subjectRI);
             sessions.put(username, session);
+            SubjectRegistry.register(username, subjectRI);
+
             return session;
         }
         return null;

@@ -138,7 +138,6 @@ public class SessionMenu {
             byte[] content = session.download(filename);
             System.out.println("Downloaded content (preview):\n" +
                     new String(content, 0, Math.min(content.length, 200)));
-            // You may save it if needed, but the requirement is to keep client stateless
         } catch (Exception e) {
             System.err.println("Failed to download file: " + e.getMessage());
         }

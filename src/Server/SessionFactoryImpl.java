@@ -11,12 +11,13 @@ import java.util.List;
 
 public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFactory {
     private final FileSystemInterface fileSystem;
-
+    private final String username;
     private SubjectRI subjectRI;
 
     public SessionFactoryImpl(String username) throws RemoteException {
         super();
         this.fileSystem = (FileSystemInterface) new FileSystemImpl(username);
+        this.username = username;
         this.subjectRI = null;
     }
 
@@ -90,12 +91,29 @@ public class SessionFactoryImpl extends UnicastRemoteObject implements SessionFa
     @Override
     public void delete(String filename) throws RemoteException {
         try {
+            List<String> users = fileSystem.getAuthorizedUsers(filename);
+
+            boolean ok = fileSystem.delete(filename);
             subjectRI.setState(new State(
-                    "DELETE",
-                    fileSystem.delete(filename) ? "'" + filename + "' delete successful.\n"
+                            "DELETE",
+                            ok ? "'" + filename + "' delete successful.\n"
                             : "Failed to delete '" + filename + "'.\n"
             ));
-        } catch(RemoteException e) { e.printStackTrace(); }
+            if(!ok) return;
+
+            for (String user : users) {
+                SubjectRI subj = SubjectRegistry.get(user);
+                if(subjectRI.equals(subj)) continue;
+                if (subj != null) {
+                    subj.setState((new State(
+                            "DELETE",
+                            "'" + filename + "' was deleted by '" + username + "'.\n"
+                    )));
+                }
+            }
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

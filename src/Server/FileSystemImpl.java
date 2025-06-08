@@ -14,49 +14,34 @@ import java.util.List;
 public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInterface {
 
     private final String username;
-
-    // “Espelho/Metadados” — onde temos both local e shared por usuário
     private static final Path STORAGE_ROOT       = Paths.get("storage");
-
-    // “Ações reais de usuário” — só local por usuário
     private static final Path SERVERSTORAGE_ROOT = Paths.get("serverStorage");
 
-    // ========== Campos de diretório ==========
+    // ========== Paths ==========
 
-    // <…>/storage/<username>
     private final Path userStorageDir;
-
-    // <…>/storage/<username>/local
     private final Path storageLocalDir;
-
-    // <…>/storage/<username>/shared
     private final Path storageSharedDir;
-
-    // <…>/serverStorage/<username>
     private final Path userServerStorageDir;
-
-    // <…>/serverStorage/<username>/local
     private final Path serverLocalDir;
-
     private Path currentDir;
 
-    // ========== Construtor ==========
+    // ========== Constructor ==========
 
     public FileSystemImpl(String username) throws RemoteException {
         super();
         this.username = username;
 
-        // 1) Pasta “storage/<username>”
+        // storage
         this.userStorageDir = STORAGE_ROOT.resolve(username);
         this.storageLocalDir  = userStorageDir.resolve("local");
         this.storageSharedDir = userStorageDir.resolve("shared");
 
-        // 2) Pasta “serverStorage/<username>”
+        // serverStorage
         this.userServerStorageDir = SERVERSTORAGE_ROOT.resolve(username);
         this.serverLocalDir       = userServerStorageDir.resolve("local");
 
         try {
-            // ─── 1) Garante que storage/<username>/local e /shared existam
             if (!Files.exists(storageLocalDir)) {
                 Files.createDirectories(storageLocalDir);
             }
@@ -64,7 +49,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                 Files.createDirectories(storageSharedDir);
             }
 
-            // ─── 2) Garante que serverStorage/<username>/local exista
             if (!Files.exists(serverLocalDir)) {
                 Files.createDirectories(serverLocalDir);
             }
@@ -76,7 +60,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
         this.currentDir = userStorageDir;
     }
 
-    // ================= Helpers Privados =================
+    // ================= Helpers =================
 
     private boolean isInsideServerLocal(Path p) {
         return p.normalize().startsWith(serverLocalDir.normalize());
@@ -123,22 +107,73 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
         });
     }
 
-    // ================= Métodos Remotos =================
+    @Override
+    public List<String> getAuthorizedUsers(String itemName) throws RemoteException {
+        List<String> result = new ArrayList<>();
+
+        Path fullPath = currentDir.resolve(itemName).normalize();
+
+        Path serverLocalDir = Paths.get("serverStorage")
+                .resolve(username)
+                .resolve("local");
+
+        if (!Files.exists(fullPath))
+            return result;
+
+        String owner;
+        Path relative;
+
+        if (fullPath.startsWith(serverLocalDir)) {
+            owner    = username;
+            relative = serverLocalDir.relativize(fullPath);
+        } else {
+            // Shared
+            Path sharedBase = STORAGE_ROOT
+                    .resolve(username)
+                    .resolve("shared");
+
+            if (!fullPath.startsWith(sharedBase)) {
+                return result;
+            }
+            Path relToShared = sharedBase.relativize(fullPath);
+            owner = relToShared.getName(0).toString();
+            relative = relToShared.subpath(1, relToShared.getNameCount());
+        }
+
+        result.add(owner);
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(STORAGE_ROOT)) {
+            for (Path userDir : ds) {
+                String user = userDir.getFileName().toString();
+                if (user.equals(owner)) continue;
+                Path sharedCopy = userDir
+                        .resolve("shared")
+                        .resolve(owner)
+                        .resolve(relative);
+                if (Files.exists(sharedCopy)) {
+                    result.add(user);
+                }
+            }
+        } catch (IOException e) {
+            throw new RemoteException("Error", e);
+        }
+
+        return result;
+    }
+
+    // ================= Remote Methods =================
 
     @Override
     public  List<String> listFiles() throws RemoteException {
         try {
             List<String> nomes = new ArrayList<>();
 
-            // 1) Caso currentDir seja o próprio “storage/<username>” (root lógico “/”):
             if (currentDir.equals(userStorageDir)) {
-                // devolvemos apenas as duas pastas fixas: local e shared
                 nomes.add("local");
                 nomes.add("shared");
                 return nomes;
             }
 
-            // 2) Caso esteja dentro de serverStorage (ex.: serverStorage/cc/local/...):
+            // Local
             if (isInsideServerLocal(currentDir)) {
                 try (DirectoryStream<Path> ds = Files.newDirectoryStream(currentDir)) {
                     for (Path p : ds) {
@@ -148,7 +183,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                 return nomes;
             }
 
-            // 3) Caso esteja dentro de storage/<username>/shared/...:
+            // Shared
             if (isInsideStorageShared(currentDir)) {
                 try (DirectoryStream<Path> ds = Files.newDirectoryStream(currentDir)) {
                     for (Path p : ds) {
@@ -158,25 +193,13 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                 return nomes;
             }
 
-            // Se caiu aqui, currentDir está em um lugar inesperado (não deveria ocorrer)
+            // Error
             return nomes;
         } catch (IOException e) {
-            throw new RemoteException("Erro em listFiles()", e);
+            throw new RemoteException("Error listFiles()", e);
         }
     }
 
-    /**
-     * Muda o currentDir de acordo com folderName:
-     *
-     *   • Se estivermos em “/” (userStorageDir), folderName só pode ser “local” ou “shared”.
-     *   • Se estivermos dentro de serverStorage/cc/local/... :
-     *       - “..” nos leva para “/” (userStorageDir) se estivermos em serverLocalDir exato.
-     *       - caso contrário, sobe um nível dentro de serverLocalDir.
-     *       - nome de subpasta → vai para serverLocalDir/subpasta.
-     *   • Se estivermos dentro de storage/cc/shared/... :
-     *       - “..” leva para “/” (userStorageDir) se estivermos em storageSharedDir exato
-     *       - nome de subpasta → vai para storageSharedDir/subpasta
-     */
     @Override
     public boolean changeDirectory(String folderName) throws RemoteException {
 
@@ -245,6 +268,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public synchronized boolean createFolder(String folderName) throws RemoteException {
+        // Local
         if (isInsideServerLocal(currentDir)) {
             Path newDir = currentDir.resolve(folderName).normalize();
             if (!newDir.startsWith(serverLocalDir)) {
@@ -268,6 +292,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
             }
         }
 
+        // Server
         if (isInsideStorageShared(currentDir)) {
             Path newDir = currentDir.resolve(folderName).normalize();
             if (!newDir.startsWith(storageSharedDir)) {
@@ -340,7 +365,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public synchronized boolean move(String itemName, String targetFolder) throws RemoteException {
-        // Só move se estivermos dentro de serverLocalDir
         if (!isInsideServerLocal(currentDir)) {
             return false;
         }
@@ -353,10 +377,8 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
         Path newLocation = destDir.resolve(source.getFileName());
         try {
-            // 1) move no serverStorage/local
             Files.move(source, newLocation, StandardCopyOption.REPLACE_EXISTING);
 
-            // 2) espelha em storage/local
             Path relOld    = serverLocalDir.relativize(source);
             Path relNew    = serverLocalDir.relativize(newLocation);
             Path mirrorOld = storageLocalDir.resolve(relOld);
@@ -414,7 +436,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public synchronized byte[] download(String filename) throws RemoteException {
-        // Só baixa se estivermos em serverLocalDir
         if (!isInsideServerLocal(currentDir)) {
             return null;
         }
@@ -430,76 +451,88 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
         }
     }
 
-    @Override
-    public synchronized boolean delete(String name) throws RemoteException {
-        if (isInsideServerLocal(currentDir)) {
-            Path target = currentDir.resolve(name).normalize();
-            if (!Files.exists(target) || !target.startsWith(serverLocalDir)) {
+        @Override
+        public boolean delete(String name) throws RemoteException {
+            Path fullPath = currentDir.resolve(name).normalize();
+            if (!Files.exists(fullPath)) {
                 return false;
             }
-            try {
-                deleteRecursively(target);
 
-                Path rel    = serverLocalDir.relativize(target);
-                Path mirror = storageLocalDir.resolve(rel);
-                if (Files.exists(mirror)) {
-                    deleteRecursively(mirror);
+            String owner;
+            Path relative;
+            Path serverLocalDirForInvoker = SERVERSTORAGE_ROOT.resolve(username).resolve("local");
+
+            if (fullPath.startsWith(serverLocalDirForInvoker)) {
+                owner    = username;
+                relative = serverLocalDirForInvoker.relativize(fullPath);
+            } else {
+                Path sharedBase = STORAGE_ROOT.resolve(username).resolve("shared");
+                Path relToShared = sharedBase.relativize(fullPath);
+                owner    = relToShared.getName(0).toString();
+                relative = relToShared.subpath(1, relToShared.getNameCount());
+            }
+
+            Path ownerServerPath = SERVERSTORAGE_ROOT.resolve(owner)
+                    .resolve("local")
+                    .resolve(relative);
+            Path ownerMirrorPath = STORAGE_ROOT.resolve(owner)
+                    .resolve("local")
+                    .resolve(relative);
+
+            try {
+                deleteRecursively(ownerServerPath);
+                if (Files.exists(ownerMirrorPath)) {
+                    deleteRecursively(ownerMirrorPath);
                 }
-                return true;
             } catch (IOException e) {
                 throw new RemoteException("Error deleting file: " + name, e);
             }
+
+        List<String> authorized = getAuthorizedUsers(name);
+        for (String u : authorized) {
+            if (u.equals(owner)) {
+                continue;
+            }
+            Path sharedPath = STORAGE_ROOT.resolve(u)
+                    .resolve("shared")
+                    .resolve(owner)
+                    .resolve(relative);
+            if (Files.exists(sharedPath)) {
+                try {
+                    deleteRecursively(sharedPath);
+                } catch (IOException ignored) {
+                }
+            }
         }
 
-        if (isInsideStorageShared(currentDir)) {
-            Path target = currentDir.resolve(name).normalize();
-            if (!Files.exists(target) || !target.startsWith(storageSharedDir)) {
-                return false;
-            }
-            try {
-                deleteRecursively(target);
-                return true;
-            } catch (IOException e) {
-                throw new RemoteException("Error deleting file: " + name, e);
-            }
-        }
-
-        return false;
+        return true;
     }
 
     @Override
     public synchronized boolean share(String name, String withUsername) throws RemoteException {
-        // 1) Só permite compartilhar se estivermos dentro de serverLocalDir
         if (!isInsideServerLocal(currentDir)) {
             return false;
         }
 
-        // 2) Fonte: caminho físico do arquivo ou pasta dentro de serverStorage/cc/local/...
         Path source = currentDir.resolve(name).normalize();
         if (!Files.exists(source)) {
             return false;
         }
 
-        // 3) Pasta “shared” do destinatário (apenas em storage, sem serverStorage)
         Path recipientSharedRoot = STORAGE_ROOT.resolve(withUsername).resolve("shared");
         if (!Files.exists(recipientSharedRoot)) {
             return false;
         }
 
-        // 4) Calcula o caminho relativo de “source” em relação a serverLocalDir (= serverStorage/<cc>/local)
         Path relativeFromLocal = serverLocalDir.relativize(source);
-        //    Se source = serverStorage/cc/local/a/b/text.file
-        //    então relativeFromLocal = Paths.get("a", "b", "text.file")
 
-        // 5) Em seguida, construímos a árvore dentro de ff/shared/cc/a/b/text.file
-        //    Ou seja: criamos uma subpasta “cc” dentro de ff/shared, e depois “a/b/text.file”
+
         Path mirrorRoot = recipientSharedRoot.resolve(username);
         Path targetPath = mirrorRoot.resolve(relativeFromLocal).normalize();
         try {
-            // 6) Começa certificando que todos os diretórios-pai existem:
+
             Files.createDirectories(targetPath.getParent());
 
-            // 7) Copia recursivamente se for diretório, ou apenas o arquivo
             if (Files.isDirectory(source)) {
                 copyRecursively(source, targetPath);
             } else {
@@ -518,17 +551,13 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public String getPath() throws RemoteException {
-        // — Caso esteja em “/” (storage/<username>), devolve “/”
         if (currentDir.equals(userStorageDir)) {
             return "/";
         }
 
-        // — Caso esteja em serverStorage/<username>/local/... → "/local/..."
         if (isInsideServerLocal(currentDir)) {
-            // Monta a parte relativa a partir de serverLocalDir
             Path relative = serverLocalDir.relativize(currentDir);
             String part = relative.toString().replace(File.separator, "/");
-            // Se estiver exatamente em serverLocalDir, o “relative” é vazio, então só retorna "/local"
             if (part.isEmpty()) {
                 return "/local";
             } else {
@@ -536,7 +565,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
             }
         }
 
-        // — Caso esteja em storage/<username>/shared/... → "/shared/..."
         if (isInsideStorageShared(currentDir)) {
             Path relative = storageSharedDir.relativize(currentDir);
             String part = relative.toString().replace(File.separator, "/");

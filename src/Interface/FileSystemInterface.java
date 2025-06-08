@@ -15,4 +15,5 @@ public interface FileSystemInterface extends Remote {
     boolean delete(String name) throws RemoteException;
     boolean share(String name, String withUsername) throws RemoteException;
     String getPath() throws RemoteException;
+    List<String> getAuthorizedUsers(String itemName) throws RemoteException;
 }
