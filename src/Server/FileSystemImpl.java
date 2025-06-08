@@ -429,42 +429,76 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
 
     @Override
     public synchronized boolean upload(String filename, byte[] data) throws RemoteException {
-
-        if (isInsideServerLocal(currentDir)) {
-            Path dst = currentDir.resolve(filename).normalize();
-            if (!dst.startsWith(serverLocalDir)) {
-                return false;
-            }
-            try {
-                Files.createDirectories(dst.getParent());
-                Files.write(dst, data);
-
+        // 1) Write into the invoker’s area
+        Path dst = currentDir.resolve(filename).normalize();
+        boolean ok;
+        try {
+            Files.createDirectories(dst.getParent());
+            Files.write(dst, data);
+            // if in owner’s local, also mirror into storage/local
+            if (isInsideServerLocal(currentDir)) {
                 Path relative = serverLocalDir.relativize(dst);
                 Path mirror   = storageLocalDir.resolve(relative);
                 Files.createDirectories(mirror.getParent());
                 Files.write(mirror, data);
-                return true;
-            } catch (IOException e) {
-                throw new RemoteException("Error uploading file: " + filename, e);
+            }
+            ok = true;
+        } catch (IOException e) {
+            throw new RemoteException("Error uploading file: " + filename, e);
+        }
+
+        // 2) If upload failed, nothing to propagate
+        if (!ok) {
+            return false;
+        }
+
+        // 3) Determine who owns this file and its path relative to owner/local
+        OwnerInfo info = resolveOwnerAndRelative(dst);
+        String owner   = info.owner;
+        Path relative   = info.relative;
+
+        // 4) Capture the list of all users authorized *after* the new file exists
+        List<String> authorized = getAuthorizedUsers(filename);
+
+        // 5) Propagate:
+        for (String u : authorized) {
+            // skip notifying the invoker themselves
+            if (u.equals(username)) {
+                continue;
+            }
+
+            if (u.equals(owner)) {
+                // collaborator just uploaded into shared → copy into owner’s local
+                Path ownerServer = SERVERSTORAGE_ROOT.resolve(owner)
+                        .resolve("local")
+                        .resolve(relative);
+                Path ownerMirror = STORAGE_ROOT.resolve(owner)
+                        .resolve("local")
+                        .resolve(relative);
+                try {
+                    Files.createDirectories(ownerServer.getParent());
+                    Files.copy(dst, ownerServer, StandardCopyOption.REPLACE_EXISTING);
+                    Files.createDirectories(ownerMirror.getParent());
+                    Files.copy(dst, ownerMirror, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ignored) {
+                    // log if you want
+                }
+            } else {
+                // propagate to other collaborators’ shared folders
+                Path sharedCopy = STORAGE_ROOT.resolve(u)
+                        .resolve("shared")
+                        .resolve(owner)
+                        .resolve(relative);
+                try {
+                    Files.createDirectories(sharedCopy.getParent());
+                    Files.copy(dst, sharedCopy, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ignored) {
+                    // log if you want
+                }
             }
         }
 
-
-        if (isInsideStorageShared(currentDir)) {
-            Path dst = currentDir.resolve(filename).normalize();
-            if (!dst.startsWith(storageSharedDir)) {
-                return false;
-            }
-            try {
-                Files.createDirectories(dst.getParent());
-                Files.write(dst, data);
-                return true;
-            } catch (IOException e) {
-                throw new RemoteException("Error uploading file: " + filename, e);
-            }
-        }
-
-        return false;
+        return true;
     }
 
 
@@ -503,6 +537,8 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                     .resolve("local")
                     .resolve(relative);
 
+            List<String> authorized = getAuthorizedUsers(name);
+
             try {
                 deleteRecursively(ownerServerPath);
                 if (Files.exists(ownerMirrorPath)) {
@@ -512,7 +548,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                 throw new RemoteException("Error deleting file: " + name, e);
             }
 
-        List<String> authorized = getAuthorizedUsers(name);
         for (String u : authorized) {
             if (u.equals(owner)) {
                 continue;
