@@ -12,7 +12,7 @@ public class ServerBackup {
             AuthFactory authService = new AuthFactoryImpl();
             Naming.rebind("rmi://localhost:1100/AuthService", authService);
 
-            System.out.println("Backup AuthService started and registered on port 1100.");
+            System.out.println("[SERVER] RMI server is now running on port 1100\n[SERVER][NOTIFICATION] AuthService Registered");
         } catch (Exception e) {
             System.err.println("Error starting backup AuthService: " + e.getMessage());
             e.printStackTrace();
