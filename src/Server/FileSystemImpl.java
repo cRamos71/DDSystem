@@ -14,7 +14,7 @@ import java.util.List;
 public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInterface {
 
     private final String username;
-    private static final Path STORAGE_ROOT       = Paths.get("storage");
+    private static final Path STORAGE_ROOT = Paths.get("storage");
     private static final Path SERVERSTORAGE_ROOT = Paths.get("serverStorage");
 
     // ========== Paths ==========
@@ -29,19 +29,19 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
     // ========== Constructor ==========
 
     public FileSystemImpl(String username) throws RemoteException {
-        super();
         this.username = username;
 
-        // storage
+        // storage config
         this.userStorageDir = STORAGE_ROOT.resolve(username);
         this.storageLocalDir  = userStorageDir.resolve("local");
         this.storageSharedDir = userStorageDir.resolve("shared");
 
-        // serverStorage
+        // serverStorage config
         this.userServerStorageDir = SERVERSTORAGE_ROOT.resolve(username);
         this.serverLocalDir       = userServerStorageDir.resolve("local");
 
         try {
+            // checks
             if (!Files.exists(storageLocalDir)) {
                 Files.createDirectories(storageLocalDir);
             }
@@ -240,6 +240,7 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
             }
             return false;
         }
+
 
         if (isInsideServerLocal(currentDir)) {
             if ("..".equals(folderName)) {
@@ -608,7 +609,6 @@ public class FileSystemImpl extends UnicastRemoteObject implements FileSystemInt
                 }
             }
         }
-
         return true;
     }
 

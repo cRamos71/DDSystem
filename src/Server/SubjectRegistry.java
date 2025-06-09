@@ -13,15 +13,8 @@ public class SubjectRegistry {
         subjects.put(username, subject);
     }
 
-    public static void unregister(String username) {
-        subjects.remove(username);
-    }
-
     public static SubjectRI get(String username) {
         return subjects.get(username);
     }
 
-    public static Collection<SubjectRI> getAll() {
-        return subjects.values();
-    }
 }
