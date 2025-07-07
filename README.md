@@ -30,5 +30,4 @@ This project implements a distributed file-sharing and synchronization system si
 
 ## Technologies Used
 - Java RMI
-- RabbitMQ
-- Design Patterns: Observer, Publish/Subscribe, Factory Method, Visitor
+- Design Patterns: Observer
